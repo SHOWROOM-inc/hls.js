@@ -701,7 +701,7 @@ export default class StreamController
     );
     const initPTS = this.initPTS[frag.cc];
 
-    transmuxer.push(
+    transmuxer.append(
       payload,
       initSegmentData,
       audioCodec,

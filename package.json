@@ -113,5 +113,8 @@
     "webpack-dev-server": "3.11.2",
     "webpack-merge": "5.8.0",
     "webworkify-webpack": "2.1.5"
+  },
+  "dependencies": {
+    "stream-http": "^3.2.0"
   }
 }

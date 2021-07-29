@@ -44,7 +44,16 @@ class FetchLoader implements Loader<LoaderContext> {
     this.controller = new self.AbortController();
     this.stats = new LoadStats();
   }
-
+  static isSupported() {
+    try {
+      const getFetch: any = window.fetch;
+      // fetch + stream is broken on Microsoft Edge. Disable for now.
+      // see https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/8196907/
+      return getFetch && window.ReadableStream;
+    } catch (e) {
+      return false;
+    }
+  }
   destroy(): void {
     this.loader = this.callbacks = null;
     this.abortInternal();

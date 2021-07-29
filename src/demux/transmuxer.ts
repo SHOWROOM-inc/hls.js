@@ -59,7 +59,8 @@ export default class Transmuxer {
   private transmuxConfig!: TransmuxConfig;
   private currentTransmuxState!: TransmuxState;
   private cache: ChunkCache = new ChunkCache();
-
+  private fnqueue: any[] = [];
+  private lock: boolean = false;
   constructor(
     observer: HlsEventEmitter,
     typeSupported: TypeSupported,
@@ -80,8 +81,54 @@ export default class Transmuxer {
       this.decrypter.reset();
     }
   }
+  synccall(fn, params) {
+    var localthis = this;
+    this.fnqueue.push(function () {
+      fn.apply(localthis, params);
+    });
+    if (!this.lock) {
+      this.next();
+    }
+  }
+  next() {
+    if (this.fnqueue.length > 0) {
+      this.lock = true;
+      this.fnqueue.shift()();
+    } else {
+      this.lock = false;
+    }
+  }
 
-  push(
+  append(
+    data,
+    decryptdata,
+    initSegment,
+    audioCodec,
+    videoCodec,
+    timeOffset,
+    discontinuity,
+    trackSwitch,
+    contiguous,
+    duration,
+    accurateTimeOffset,
+    defaultInitPTS
+  ) {
+    this.synccall(this.appendTask, [
+      data,
+      decryptdata,
+      initSegment,
+      audioCodec,
+      videoCodec,
+      timeOffset,
+      discontinuity,
+      trackSwitch,
+      contiguous,
+      duration,
+      accurateTimeOffset,
+      defaultInitPTS,
+    ]);
+  }
+  appendTask(
     data: ArrayBuffer,
     decryptdata: LevelKey | null,
     chunkMeta: ChunkMetadata,
@@ -119,7 +166,7 @@ export default class Transmuxer {
           .then((decryptedData): TransmuxerResult => {
             // Calling push here is important; if flush() is called while this is still resolving, this ensures that
             // the decrypted data has been transmuxed
-            const result = this.push(
+            const result = this.appendTask(
               decryptedData,
               null,
               chunkMeta
@@ -211,7 +258,7 @@ export default class Transmuxer {
       if (decryptedData) {
         // Push always returns a TransmuxerResult if decryptdata is null
         transmuxResults.push(
-          this.push(decryptedData, null, chunkMeta) as TransmuxerResult
+          this.appendTask(decryptedData, null, chunkMeta) as TransmuxerResult
         );
       }
     }
@@ -430,7 +477,7 @@ export default class Transmuxer {
       this.remuxer = new Remuxer(observer, config, typeSupported, vendor);
     }
     if (!demuxer || !(demuxer instanceof Demuxer)) {
-      this.demuxer = new Demuxer(observer, config, typeSupported);
+      this.demuxer = new Demuxer(observer, config, typeSupported, vendor);
       this.probe = Demuxer.probe;
     }
     // Ensure that muxers are always initialized with an initSegment
@@ -454,6 +501,17 @@ export default class Transmuxer {
       decrypter = this.decrypter = new Decrypter(this.observer, this.config);
     }
     return decrypter;
+  }
+  notifycompleted() {
+    this.synccall(this.notifycompletedTask, []);
+  }
+
+  notifycompletedTask() {
+    /* let demuxer = this.demuxer;
+    if (demuxer) {
+      demuxer.notifycompleted();
+    } */
+    this.next();
   }
 }
 

@@ -24,6 +24,7 @@ import type { MediaPlaylist } from './types/media-playlist';
 import type { HlsConfig } from './config';
 import type { Level } from './types/level';
 import type { Fragment } from './loader/fragment';
+import { normalLiveConfig, lowLatencyLiveConfig } from './sr-config';
 
 /**
  * @module Hls
@@ -185,6 +186,39 @@ export default class Hls implements HlsEventEmitter {
     );
 
     this.coreComponents = coreComponents;
+    // SHOWROOM Customize START
+    // tsとかが書かれたm3u8を読み込んだ際、その中に 'EXT-X-SR-LHLS' のタグが含まれていたら、
+    // force2LatestBuffer (バッファリングされた最新の位置へのシーク) を有効にする。
+    // force2LatestBuffer は buffer-controller を参照。
+    const enableForce2LatestBuffer = (event, data) => {
+      /*
+      if (!!data && !!data.networkDetails && !!data.networkDetails.response) {
+        if (data.networkDetails.response.indexOf('#EXT-X-SR-LHLS') !== -1) {
+          this.config.force2LatestBuffer = true;
+        }
+      }
+      */
+      this.off(Hls.Events.LEVEL_LOADED, enableForce2LatestBuffer);
+    };
+    const registerLevelLoadedFunc = () => {
+      // 現状 force2LatestBuffer が有効な状態で再生の確認ができているのが
+      // Chrome/Firefoxのみのため、 Chrome/Firefox だけに限定している。
+      if (isChrome || isFirefox) {
+        // enableLowLatencyPlaybackがtrueである場合にのみ
+        if (this.config.enableLowLatencyPlayback === true) {
+          this.on(Hls.Events.LEVEL_LOADED, enableForce2LatestBuffer);
+        }
+      }
+    };
+
+    // videoエレメントがdetachされた際に、念の為force2LatestBufferを無効にする
+    this.on(Hls.Events.MEDIA_DETACHED, () => {
+      // this.config.force2LatestBuffer = false;
+      // 次回再生された時のために再登録しておく
+      registerLevelLoadedFunc();
+    });
+
+    registerLevelLoadedFunc();
   }
 
   createController(ControllerClass, fragmentTracker, components) {
@@ -813,8 +847,19 @@ export default class Hls implements HlsEventEmitter {
   get forceStartLoad(): boolean {
     return this.streamController.forceStartLoad;
   }
+  set enableLowLatencyPlayback(enabled) {
+    const applyConfig = enabled ? lowLatencyLiveConfig : normalLiveConfig;
+    for (const prop in applyConfig) {
+      this.config[prop] = applyConfig[prop];
+    }
+  }
+  get enableLowLatencyPlayback() {
+    return !!this.config.enableLowLatencyPlayback;
+  }
 }
-
+const ua = navigator.userAgent.toLowerCase();
+const isFirefox = ua.indexOf('firefox') !== -1;
+const isChrome = ua.indexOf('chrome') !== -1 && ua.indexOf('edge') === -1;
 export type {
   MediaPlaylist,
   ErrorDetails,

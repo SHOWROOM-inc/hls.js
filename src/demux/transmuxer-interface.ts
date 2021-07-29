@@ -140,7 +140,7 @@ export default class TransmuxerInterface {
     this.observer = null;
   }
 
-  push(
+  append(
     data: ArrayBuffer,
     initSegmentData: Uint8Array | undefined,
     audioCodec: string | undefined,
@@ -213,7 +213,7 @@ export default class TransmuxerInterface {
         data instanceof ArrayBuffer ? [data] : []
       );
     } else if (transmuxer) {
-      const transmuxResult = transmuxer.push(
+      const transmuxResult = transmuxer.appendTask(
         data,
         decryptdata,
         chunkMeta,
@@ -221,7 +221,7 @@ export default class TransmuxerInterface {
       );
       if (isPromise(transmuxResult)) {
         transmuxResult.then((data) => {
-          this.handleTransmuxComplete(data);
+          this.handleTransmuxComplete(data as TransmuxerResult);
         });
       } else {
         this.handleTransmuxComplete(transmuxResult as TransmuxerResult);
@@ -261,7 +261,17 @@ export default class TransmuxerInterface {
     });
     this.onFlush(chunkMeta);
   }
-
+  private notifycompleted() {
+    let w = this.worker;
+    if (w) {
+      w.postMessage({ cmd: 'completed' });
+    } else {
+      let transmuxer = this.transmuxer;
+      if (transmuxer) {
+        transmuxer.notifycompleted();
+      }
+    }
+  }
   private onWorkerMessage(ev: any): void {
     const data = ev.data;
     const hls = this.hls;

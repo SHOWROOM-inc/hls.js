@@ -117,7 +117,7 @@ describe('TransmuxerInterface tests', function () {
     const accurateTimeOffset = true;
     let chunkMeta = new ChunkMetadata(currentFrag.level, currentFrag.sn, 0);
     let state = new TransmuxState(false, true, true, false, 0);
-    transmuxerInterface.push(
+    transmuxerInterface.append(
       data,
       initSegmentData,
       audioCodec,
@@ -150,7 +150,7 @@ describe('TransmuxerInterface tests', function () {
     newFrag.startPTS = 1000;
     chunkMeta = new ChunkMetadata(newFrag.level, newFrag.sn, 0);
     state = new TransmuxState(false, true, true, false, 1000);
-    transmuxerInterface.push(
+    transmuxerInterface.append(
       data,
       initSegmentData,
       audioCodec,
@@ -217,7 +217,7 @@ describe('TransmuxerInterface tests', function () {
     );
     const pushStub = sinon.stub(transmuxerInterfacePrivates.transmuxer, 'push');
     pushStub.returns(Promise.reject(new Error('Stubbed transmux result')));
-    transmuxerInterface.push(
+    transmuxerInterface.append(
       data,
       initSegmentData,
       audioCodec,

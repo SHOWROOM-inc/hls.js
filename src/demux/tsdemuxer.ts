@@ -73,7 +73,7 @@ class TSDemuxer implements Demuxer {
   private readonly observer: HlsEventEmitter;
   private readonly config: HlsConfig;
   private typeSupported: TypeSupported;
-
+  private vendor: any;
   private sampleAes: SampleAesDecrypter | null = null;
   private pmtParsed: boolean = false;
   private audioCodec!: string;
@@ -91,15 +91,25 @@ class TSDemuxer implements Demuxer {
   private aacOverFlow: AudioFrame | null = null;
   private avcSample: ParsedAvcSample | null = null;
   private remainderData: Uint8Array | null = null;
-
+  private isSafari: any;
+  private data: any[] = [];
+  private len: number = 0;
+  private contiguous: boolean = false;
   constructor(
     observer: HlsEventEmitter,
     config: HlsConfig,
-    typeSupported: TypeSupported
+    typeSupported: TypeSupported,
+    vendor: any
   ) {
     this.observer = observer;
     this.config = config;
     this.typeSupported = typeSupported;
+    const userAgent = navigator.userAgent;
+    this.isSafari =
+      vendor &&
+      vendor.indexOf('Apple') > -1 &&
+      userAgent &&
+      !userAgent.match('CriOS');
   }
 
   static probe(data: Uint8Array) {
@@ -198,6 +208,9 @@ class TSDemuxer implements Demuxer {
     this.audioCodec = audioCodec;
     this.videoCodec = videoCodec;
     this._duration = duration;
+    this.data = [];
+    this.len = 0;
+    this.contiguous = true;
   }
 
   public resetTimeStamp() {}
@@ -218,7 +231,7 @@ class TSDemuxer implements Demuxer {
   }
 
   public demux(
-    data: Uint8Array,
+    dataIn: Uint8Array,
     timeOffset: number,
     isSampleAes = false,
     flush = false
@@ -243,15 +256,15 @@ class TSDemuxer implements Demuxer {
     let pmtParsed = this.pmtParsed;
     let pmtId = this._pmtId;
 
-    let len = data.length;
+    let len = dataIn.length;
     if (this.remainderData) {
-      data = appendUint8Array(this.remainderData, data);
-      len = data.length;
+      dataIn = appendUint8Array(this.remainderData, dataIn);
+      len = dataIn.length;
       this.remainderData = null;
     }
 
     if (len < 188 && !flush) {
-      this.remainderData = data;
+      this.remainderData = dataIn;
       return {
         audioTrack,
         avcTrack,
@@ -259,7 +272,10 @@ class TSDemuxer implements Demuxer {
         textTrack: this._txtTrack,
       };
     }
-
+    let dataObject = this.data.shift(),
+      data = dataObject.data,
+      start = dataObject.start,
+      i = 0;
     const syncOffset = Math.max(0, TSDemuxer.syncOffset(data));
 
     len -= (len + syncOffset) % 188;
@@ -272,7 +288,37 @@ class TSDemuxer implements Demuxer {
     }
 
     // loop through TS packets
-    for (let start = syncOffset; start < len; start += 188) {
+    for (i = 0; i + 188 <= len; i += 188, start += 188) {
+      if (start < data.length) {
+        let remainingLen = data.length - start,
+          neededLen = 188 - remainingLen,
+          nextChunk = this.data[0],
+          appendedLen = Math.min(nextChunk.data.length, neededLen),
+          newData = new Uint8Array(remainingLen + appendedLen);
+        newData.set(data.subarray(start));
+        if (nextChunk) {
+          newData.set(nextChunk.data.subarray(0, appendedLen), remainingLen);
+          if (newData.length === 188) {
+            nextChunk.start = appendedLen;
+          } else {
+            this.data.shift();
+          }
+          data = newData;
+          start = 0;
+        }
+      } else {
+        data = this.data.shift();
+        if (data) {
+          start = data.start;
+          data = data.data;
+        }
+      }
+
+      if (start + 188 > data.length) {
+        i -= 188;
+        start -= 188;
+        continue;
+      }
       if (data[start] === 0x47) {
         const stt = !!(data[start + 1] & 0x40);
         // pid is a 13-bit field starting at the last bit of TS[1]
@@ -378,7 +424,7 @@ class TSDemuxer implements Demuxer {
               logger.log('reparse from beginning');
               unknownPIDs = false;
               // we set it to -188, the += 188 in the for loop will reset start to 0
-              start = syncOffset - 188;
+              // start = syncOffset - 188;
             }
             pmtParsed = this.pmtParsed = true;
             break;
@@ -394,9 +440,15 @@ class TSDemuxer implements Demuxer {
         this.observer.emit(Events.ERROR, Events.ERROR, {
           type: ErrorTypes.MEDIA_ERROR,
           details: ErrorDetails.FRAG_PARSING_ERROR,
-          fatal: false,
+          fatal: true,
           reason: 'TS packet did not start with 0x47',
         });
+      }
+    }
+    let remainingLen = (this.len = len - i);
+    if (remainingLen) {
+      if (this.data.length === 0) {
+        this.data.push({ start: data.length - remainingLen, data: data });
       }
     }
 
@@ -417,7 +469,6 @@ class TSDemuxer implements Demuxer {
 
     return demuxResult;
   }
-
   public flush(): DemuxerResult | Promise<DemuxerResult> {
     const { remainderData } = this;
     this.remainderData = null;

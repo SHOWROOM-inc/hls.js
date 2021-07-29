@@ -37,7 +37,7 @@ export default function TransmuxerWorker(self) {
       }
       case 'demux': {
         const transmuxResult: TransmuxerResult | Promise<TransmuxerResult> =
-          self.transmuxer.push(
+          self.transmuxer.append(
             data.data,
             data.decryptdata,
             data.chunkMeta,
@@ -67,6 +67,9 @@ export default function TransmuxerWorker(self) {
           );
         }
         break;
+      }
+      case 'completed': {
+        self.transmuxer.notifycompleted();
       }
       default:
         break;

@@ -123,7 +123,7 @@ export class BaseSegment {
     // (undocumented)
     get url(): string;
     set url(value: string);
-    }
+}
 
 // Warning: (ae-missing-release-tag) "BufferAppendedData" is exported by the package, but it is missing a release tag (@alpha, @beta, @public, or @internal)
 //
@@ -852,6 +852,9 @@ class Hls implements HlsEventEmitter {
     get drift(): number | null;
     // (undocumented)
     emit<E extends keyof HlsListeners>(event: E, name: E, eventObject: Parameters<HlsListeners[E]>[1]): boolean;
+    set enableLowLatencyPlayback(enabled: boolean);
+    // (undocumented)
+    get enableLowLatencyPlayback(): boolean;
     // (undocumented)
     static get ErrorDetails(): typeof ErrorDetails;
     // (undocumented)
@@ -925,7 +928,6 @@ class Hls implements HlsEventEmitter {
     // (undocumented)
     static get version(): string;
 }
-
 export default Hls;
 
 // Warning: (ae-missing-release-tag) "HlsChunkPerformanceTiming" is exported by the package, but it is missing a release tag (@alpha, @beta, @public, or @internal)
@@ -962,6 +964,7 @@ export type HlsConfig = {
     fpsController: typeof FPSController;
     progressive: boolean;
     lowLatencyMode: boolean;
+    enableLowLatencyPlayback: boolean;
 } & ABRControllerConfig & BufferControllerConfig & CapLevelControllerConfig & EMEControllerConfig & FPSControllerConfig & FragmentLoaderConfig & LevelControllerConfig & MP4RemuxerConfig & PlaylistLoaderConfig & StreamControllerConfig & LatencyControllerConfig & TimelineControllerConfig & TSDemuxerConfig;
 
 // Warning: (ae-missing-release-tag) "HlsEventEmitter" is exported by the package, but it is missing a release tag (@alpha, @beta, @public, or @internal)
@@ -1425,7 +1428,7 @@ export class LevelKey {
     method: string | null;
     // (undocumented)
     get uri(): string | null;
-    }
+}
 
 // Warning: (ae-missing-release-tag) "LevelLoadedData" is exported by the package, but it is missing a release tag (@alpha, @beta, @public, or @internal)
 //
@@ -2122,7 +2125,6 @@ export interface UserdataSample {
     // (undocumented)
     pts: number;
 }
-
 
 // Warnings were encountered during analysis:
 //

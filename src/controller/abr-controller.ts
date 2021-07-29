@@ -419,6 +419,9 @@ class AbrController implements ComponentAPI {
       ? fragCurrent.duration
       : 0;
     for (let i = maxAutoLevel; i >= minAutoLevel; i--) {
+      if (!levels[i]) {
+        continue;
+      }
       const levelInfo = levels[i];
 
       if (

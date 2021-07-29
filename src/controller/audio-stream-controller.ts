@@ -513,7 +513,7 @@ class AudioStreamController
         partIndex,
         partial
       );
-      transmuxer.push(
+      transmuxer.append(
         payload,
         initSegmentData,
         audioCodec,

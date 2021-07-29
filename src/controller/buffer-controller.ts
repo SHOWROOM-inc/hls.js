@@ -28,6 +28,15 @@ import type Hls from '../hls';
 import { LevelDetails } from '../loader/level-details';
 
 const MediaSource = getMediaSource();
+
+const BufferingTimeAdjustState = {
+  NONE: 'NONE',
+  INPROGRESS: 'INPROGRESS',
+  COMPLETED: 'COMPLETED',
+};
+
+let retryCount;
+
 const VIDEO_CODEC_PROFILE_REPACE = /([ha]vc.)(?:\.[^.,]+)+/;
 
 export default class BufferController implements ComponentAPI {
@@ -60,7 +69,8 @@ export default class BufferController implements ComponentAPI {
   public tracks: TrackSet = {};
   public pendingTracks: TrackSet = {};
   public sourceBuffer!: SourceBuffers;
-
+  public bufferingTimeAdjustState: string = '';
+  public seeked: boolean = false;
   constructor(hls: Hls) {
     this.hls = hls;
     this._initSourceBuffer();
@@ -204,6 +214,8 @@ export default class BufferController implements ComponentAPI {
       this.bufferCodecEventsExpected = this._bufferCodecEventsTotal;
       this.pendingTracks = {};
       this.tracks = {};
+      this.seeked = false;
+      this.bufferingTimeAdjustState = BufferingTimeAdjustState.NONE;
     }
 
     this.hls.trigger(Events.MEDIA_DETACHED, undefined);
@@ -640,7 +652,19 @@ export default class BufferController implements ComponentAPI {
       mediaSource.duration = levelDuration;
     }
   }
-
+  getDroppedFrames() {
+    const v: any = this.media;
+    let videoPlaybackQuality = v.getVideoPlaybackQuality;
+    if (
+      videoPlaybackQuality &&
+      typeof videoPlaybackQuality === typeof Function
+    ) {
+      return v.getVideoPlaybackQuality().droppedVideoFrames;
+    } else if (v.webkitDroppedFrameCount) {
+      return v.webkitDroppedFrameCount;
+    }
+    return 0;
+  }
   updateSeekableRange(levelDetails) {
     const mediaSource = this.mediaSource;
     const fragments = levelDetails.fragments;

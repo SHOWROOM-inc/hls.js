@@ -365,8 +365,9 @@ export default class MP4Remuxer implements Remuxer {
     audioTrackLength: number
   ): RemuxedTrack | undefined {
     const timeScale: number = track.inputTimeScale;
-    const inputSamples: Array<AvcSample> = track.samples;
+    const inputSamples: any[] = track.samples;
     const outputSamples: Array<Mp4Sample> = [];
+    const deferSamples: any[] = [];
     const nbSamples: number = inputSamples.length;
     const initPTS: number = this._initPTS;
     let nextAvcDts = this.nextAvcDts;
@@ -374,6 +375,8 @@ export default class MP4Remuxer implements Remuxer {
     let mp4SampleDuration!: number;
     let firstDTS;
     let lastDTS;
+    let lastPTS;
+    let sample;
     let minPTS: number = Number.POSITIVE_INFINITY;
     let maxPTS: number = Number.NEGATIVE_INFINITY;
     let ptsDtsShift = 0;
@@ -463,7 +466,7 @@ export default class MP4Remuxer implements Remuxer {
     }
 
     // if fragment are contiguous, detect hole/overlapping between fragments
-    if (contiguous) {
+    /* if (contiguous) {
       // check timestamp continuity across consecutive fragments (this is to remove inter-fragment gap/hole)
       const delta = firstDTS - nextAvcDts;
       const foundHole = delta > averageSampleDuration;
@@ -498,7 +501,7 @@ export default class MP4Remuxer implements Remuxer {
           )}, delta: ${toMsFromMpegTsClock(delta, true)} ms`
         );
       }
-    }
+    } */
 
     if (requiresPositiveDts) {
       firstDTS = Math.max(0, firstDTS);
@@ -527,6 +530,7 @@ export default class MP4Remuxer implements Remuxer {
       minPTS = Math.min(sample.pts, minPTS);
       maxPTS = Math.max(sample.pts, maxPTS);
     }
+    sample = inputSamples[inputSamples.length - 1];
     lastDTS = inputSamples[nbSamples - 1].dts;
 
     /* concatenate the video data and construct the mdat in place
@@ -569,40 +573,13 @@ export default class MP4Remuxer implements Remuxer {
       if (i < nbSamples - 1) {
         mp4SampleDuration = inputSamples[i + 1].dts - avcSample.dts;
       } else {
-        const config = this.config;
-        const lastFrameDuration =
-          avcSample.dts - inputSamples[i > 0 ? i - 1 : i].dts;
-        if (config.stretchShortVideoTrack && this.nextAudioPts !== null) {
-          // In some cases, a segment's audio track duration may exceed the video track duration.
-          // Since we've already remuxed audio, and we know how long the audio track is, we look to
-          // see if the delta to the next segment is longer than maxBufferHole.
-          // If so, playback would potentially get stuck, so we artificially inflate
-          // the duration of the last frame to minimize any potential gap between segments.
-          const gapTolerance = Math.floor(config.maxBufferHole * timeScale);
-          const deltaToFrameEnd =
-            (audioTrackLength
-              ? minPTS + audioTrackLength * timeScale
-              : this.nextAudioPts) - avcSample.pts;
-          if (deltaToFrameEnd > gapTolerance) {
-            // We subtract lastFrameDuration from deltaToFrameEnd to try to prevent any video
-            // frame overlap. maxBufferHole should be >> lastFrameDuration anyway.
-            mp4SampleDuration = deltaToFrameEnd - lastFrameDuration;
-            if (mp4SampleDuration < 0) {
-              mp4SampleDuration = lastFrameDuration;
-            }
-            logger.log(
-              `[mp4-remuxer]: It is approximately ${
-                deltaToFrameEnd / 90
-              } ms to the next segment; using duration ${
-                mp4SampleDuration / 90
-              } ms for the last video frame.`
-            );
-          } else {
-            mp4SampleDuration = lastFrameDuration;
-          }
-        } else {
-          mp4SampleDuration = lastFrameDuration;
-        }
+        avcSample.pts = avcSample.ptsOrg;
+        avcSample.dts = avcSample.dtsOrg;
+        deferSamples.push(avcSample);
+        sample = inputSamples[i > 0 ? i - 1 : i];
+        lastDTS = Math.max(sample.dts, 0);
+        lastPTS = Math.max(sample.pts, 0, lastDTS);
+        continue;
       }
       const compositionTimeOffset = Math.round(avcSample.pts - avcSample.dts);
 
@@ -653,7 +630,7 @@ export default class MP4Remuxer implements Remuxer {
       dropped: track.dropped,
     };
 
-    track.samples = [];
+    track.samples = deferSamples;
     track.dropped = 0;
 
     console.assert(mdat.length, 'MDAT length must not be zero');
